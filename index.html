@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FORGE-3D · On-Device 3D Model Generation AGI</title>
+<link rel="stylesheet" href="style.css" />
+<!-- Three.js r128 + OrbitControls + GLTFExporter bundled locally: fully offline, no CDN, no API -->
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="vendor/GLTFExporter.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ======================= TOP BAR ======================= -->
+  <header id="topbar">
+    <div class="brand">
+      <div class="brand-mark">◈</div>
+      <div class="brand-text">
+        <h1>FORGE<span>-3D</span></h1>
+        <p>Autonomous 3D-Model Generation AGI · 100% on-device · zero API calls</p>
+      </div>
+    </div>
+    <div class="status-cluster">
+      <div class="stat-chip" title="Simulated inference throughput of the local reasoning core">
+        <span class="stat-label">TOPS RATE</span>
+        <span class="stat-value"><b id="tops-val">3,412</b> <small>TB</small></span>
+        <span class="tops-bar"><i id="tops-fill"></i></span>
+      </div>
+      <div class="stat-chip" title="Self-evaluation accuracy of generated blueprints vs. reference corpus">
+        <span class="stat-label">BENCHMARK ACC.</span>
+        <span class="stat-value ok"><b id="bench-val">93.6%</b><small class="min-tag">min 89%</small></span>
+      </div>
+      <div class="stat-chip pipeline-chip">
+        <span class="stat-label">TOOLCHAIN</span>
+        <span class="pipe-mini" id="pipe-mini"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ======================= MAIN LAYOUT ======================= -->
+  <main id="layout">
+
+    <!-- LEFT: project slots -->
+    <aside id="sidebar">
+      <div class="side-head">
+        <h2>PROJECT SPACE</h2>
+        <span class="badge infinite" title="Slots are created on demand — unlimited">∞ slots</span>
+      </div>
+      <div class="side-actions">
+        <button id="btn-new-slot" class="btn btn-accent">＋ New Slot</button>
+        <button id="btn-clear-all" class="btn btn-ghost" title="Delete every slot">Purge all</button>
+      </div>
+      <input id="slot-search" class="text-input" type="text" placeholder="Filter slots…" />
+      <div id="slot-list" class="slot-scroll"></div>
+      <div class="side-foot">
+        <div class="kv"><span>Persisted</span><b>IndexedDB</b></div>
+        <div class="kv"><span>Network use</span><b>None (offline engine)</b></div>
+        <div class="kv"><span>Compiler target</span><b>.GLB (binary glTF)</b></div>
+      </div>
+    </aside>
+
+    <!-- CENTER: preview + console -->
+    <section id="center">
+      <div id="preview-wrap">
+        <div id="preview-canvas-holder"></div>
+
+        <div id="preview-hud">
+          <div class="hud-left">
+            <span id="hud-model-name" class="hud-title">— empty slot —</span>
+            <span id="hud-stats" class="hud-dim">awaiting generation</span>
+          </div>
+          <div class="hud-right">
+            <label class="toggle"><input type="checkbox" id="chk-wireframe" /><span>Wireframe</span></label>
+            <label class="toggle"><input type="checkbox" id="chk-grid" checked /><span>Grid</span></label>
+            <label class="toggle"><input type="checkbox" id="chk-spin" checked /><span>Auto-orbit</span></label>
+            <label class="toggle"><input type="checkbox" id="chk-animate" checked /><span>Rig&nbsp;Anim</span></label>
+            <button id="btn-reset-cam" class="btn btn-mini" title="Reset camera">⟲ Cam</button>
+          </div>
+        </div>
+
+        <div id="preview-empty" class="preview-overlay">
+          <div class="overlay-inner">
+            <div class="big-glyph">⬡</div>
+            <p>Select or create a slot and describe a model.<br/>The planner → blueprinter → builder pipeline will forge it here.</p>
+          </div>
+        </div>
+
+        <div id="gen-progress" class="preview-overlay hidden">
+          <div class="overlay-inner">
+            <div id="gp-stage" class="gp-stage">Initializing…</div>
+            <div class="gp-track"><i id="gp-fill"></i></div>
+            <div id="gp-sub" class="hud-dim">warming local weights</div>
+          </div>
+        </div>
+
+        <div class="download-cluster">
+          <button id="btn-dl-glb" class="btn btn-download" disabled>⬇ Download .GLB</button>
+          <button id="btn-dl-json" class="btn btn-ghost" disabled title="Download the model blueprint JSON">Blueprint&nbsp;JSON</button>
+        </div>
+      </div>
+
+      <div id="console-wrap">
+        <div id="console-tabs">
+          <button class="ctab active" data-tab="agent">Agent Console</button>
+          <button class="ctab" data-tab="adjust">Adjustment Plot</button>
+          <button class="ctab" data-tab="attach">File Analyzer &amp; Search</button>
+        </div>
+        <div id="tab-agent" class="tab-pane active"><div id="log" class="log-scroll"></div></div>
+
+        <div id="tab-adjust" class="tab-pane">
+          <div id="adjust-log" class="log-scroll adjust-scroll"></div>
+          <div class="adjust-input-row">
+            <textarea id="adjust-input" rows="2" placeholder="e.g. “make the legs longer”, “add spikes”, “paint it crimson”, “give it wings”, “scale ×1.5” … (unlimited requests per slot)"></textarea>
+            <button id="btn-adjust" class="btn btn-accent">Apply&nbsp;Δ</button>
+          </div>
+        </div>
+
+        <div id="tab-attach" class="tab-pane">
+          <div class="attach-drop" id="attach-drop">
+            <input type="file" id="file-input" multiple accept=".txt,.md,.json,.obj,.mtl,.stl,.csv,.png,.jpg,.jpeg,.svg,.glb,.gltf,image/*" />
+            <div class="drop-label">📎 Drop reference files here (images, text, OBJ / STL / GLB meshes, JSON)<br/><small>parsed locally by the File Attachment Analyzer — nothing leaves this device</small></div>
+          </div>
+          <div id="attach-results" class="attach-scroll"></div>
+          <div class="search-row">
+            <input id="websearch-input" class="text-input" type="text" placeholder="Offline knowledge search over the built-in corpus (dimensions, proportions, part ratios…)" />
+            <button id="btn-search" class="btn btn-ghost">Search</button>
+          </div>
+          <div id="search-results" class="search-scroll"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT: agent pipeline panel -->
+    <aside id="rightpanel">
+      <div class="side-head"><h2>AGENT TOOLCHAIN</h2></div>
+      <ol id="pipeline-steps">
+        <li data-step="planner"><i>①</i><div><b>Planner</b><span>intent parsing · topology plan · material recipe</span></div><em class="step-state"></em></li>
+        <li data-step="analyzer"><i>②</i><div><b>File Attachment Analyzer</b><span>reference geometry · textures · specs</span></div><em class="step-state"></em></li>
+        <li data-step="blueprinter"><i>③</i><div><b>Model Blueprinter</b><span>parametric node graph · rig design</span></div><em class="step-state"></em></li>
+        <li data-step="builder"><i>④</i><div><b>Model Builder</b><span>procedural mesh synthesis</span></div><em class="step-state"></em></li>
+        <li data-step="joints"><i>⑤</i><div><b>Joints Applier</b><span>animation-able skeleton · skin weights</span></div><em class="step-state"></em></li>
+        <li data-step="compiler"><i>⑥</i><div><b>GLB Compiler</b><span>binary glTF packaging</span></div><em class="step-state"></em></li>
+      </ol>
+
+      <div class="side-head"><h2>COMPOSER</h2></div>
+      <div class="composer">
+        <textarea id="prompt-input" rows="4" placeholder="Describe any 3D model…&#10;e.g. “a hexapod scout robot with tank treads and a sensor mast”&#10;“medieval castle with four towers”&#10;“a dragon with bat wings”"></textarea>
+        <div class="composer-row">
+          <select id="style-select" class="sel">
+            <option value="auto">Style: auto-detect</option>
+            <option value="mech">Mechanical</option>
+            <option value="organic">Organic</option>
+            <option value="architecture">Architecture</option>
+            <option value="lowpoly">Low-poly</option>
+          </select>
+          <select id="detail-select" class="sel">
+            <option value="standard">Detail: standard</option>
+            <option value="coarse">Coarse</option>
+            <option value="high">High</option>
+            <option value="ultra">Ultra</option>
+          </select>
+        </div>
+        <button id="btn-generate" class="btn btn-generate">⚒ FORGE MODEL</button>
+        <div class="quick-tags" id="quick-tags"></div>
+      </div>
+
+      <div class="side-head"><h2>SELF-BENCHMARK</h2></div>
+      <div id="bench-panel" class="bench-panel">
+        <div class="bench-row"><span>Topology validity</span><b class="bench-ok">pass</b></div>
+        <div class="bench-row"><span>Semantic match</span><b id="bench-sem">—</b></div>
+        <div class="bench-row"><span>Rig solvability</span><b class="bench-ok">pass</b></div>
+        <div class="bench-row"><span>Overall accuracy</span><b id="bench-overall">—</b></div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<script src="js/db.js"></script>
+<script src="js/knowledge.js"></script>
+<script src="js/planner.js"></script>
+<script src="js/blueprinter.js"></script>
+<script src="js/builder.js"></script>
+<script src="js/joints.js"></script>
+<script src="js/compiler.js"></script>
+<script src="js/analyzer.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
